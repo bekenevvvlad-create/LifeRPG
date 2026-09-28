@@ -13,7 +13,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Get project
         uses: actions/checkout@v4
@@ -24,26 +23,26 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
       - name: Extract project
         run: |
           unzip -q LifeRPG_Android_Project.zip -d project
-          WRAPPER="$(find project -type f -name gradlew -print -quit)"
-          if [ -z "$WRAPPER" ]; then
-            echo "gradlew not found"
+          SETTINGS=$(find project -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)
+          if [ -z "$SETTINGS" ]; then
+            echo "settings.gradle not found"
             exit 1
           fi
-          PROJECT_DIR="$(dirname "$WRAPPER")"
+          PROJECT_DIR="$(dirname "$SETTINGS")"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Set Gradle version
-        run: |
-          sed -i 's#distributionUrl=.*#distributionUrl=https://services.gradle.org/distributions/gradle-9.6.0-bin.zip#' "$PROJECT_DIR/gradle/wrapper/gradle-wrapper.properties"
 
       - name: Build APK
         run: |
           cd "$PROJECT_DIR"
-          chmod +x ./gradlew
-          ./gradlew assembleDebug
+          gradle assembleDebug
 
       - name: Save APK
         uses: actions/upload-artifact@v4
