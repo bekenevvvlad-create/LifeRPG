@@ -1,7 +1,6 @@
+name: Build LifeRPG APK
 
-name: "Build LifeRPG APK"
-
-'on':
+on:
   workflow_dispatch:
   push:
     branches:
@@ -28,15 +27,21 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
-      - name: Extract LifeRPG source
+      - name: Check source archive
         run: |
           if [ ! -f "LifeRPG-Improved-Source.zip" ]; then
-            echo "ERROR: Source ZIP not found"
+            echo "ERROR: LifeRPG-Improved-Source.zip not found"
             ls -la
             exit 1
           fi
 
+          echo "Source archive found"
+          unzip -l LifeRPG-Improved-Source.zip
+
+      - name: Extract source
+        run: |
           mkdir -p extracted
           unzip -q LifeRPG-Improved-Source.zip -d extracted
 
@@ -46,14 +51,15 @@ jobs:
 
           if [ -z "$PROJECT_DIR" ]; then
             echo "ERROR: Gradle project not found in ZIP"
-            find extracted -maxdepth 4 -type f
+            find extracted -maxdepth 5 -type f
             exit 1
           fi
 
           mkdir -p LifeRPG_Android
           cp -a "$PROJECT_DIR"/. LifeRPG_Android/
 
-          echo "Project extracted successfully"
+          echo "Project directory: $PROJECT_DIR"
+          echo "Extracted project files:"
           ls -la LifeRPG_Android
 
       - name: Locate Android SDK
@@ -68,7 +74,6 @@ jobs:
             exit 1
           fi
 
-          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
           echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
 
       - name: Accept Android SDK licenses
@@ -87,7 +92,11 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.11.1'
+          gradle-version: '9.6.0'
+
+      - name: Show Gradle version
+        working-directory: LifeRPG_Android
+        run: gradle --version
 
       - name: Build LifeRPG APK
         working-directory: LifeRPG_Android
