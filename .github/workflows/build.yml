@@ -1,4 +1,3 @@
-
 name: Build LifeRPG APK
 
 'on':
@@ -21,10 +20,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Java 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
@@ -36,7 +35,7 @@ jobs:
 
           if [ ! -f "LifeRPG-Improved-Source.zip" ]; then
             echo "ERROR: LifeRPG-Improved-Source.zip not found!"
-            echo "Repository files:"
+            echo "Repository root:"
             ls -la
             exit 1
           fi
@@ -61,31 +60,32 @@ jobs:
 
           if [ -z "$SETTINGS_FILE" ]; then
             echo "ERROR: Gradle settings file not found in archive."
+            echo "Archive contents:"
             find extracted -maxdepth 6 -type f | sort
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
 
-          echo "Found project at: $PROJECT_DIR"
+          echo "Found Gradle project: $PROJECT_DIR"
 
           mkdir -p LifeRPG_Android
           cp -a "$PROJECT_DIR"/. LifeRPG_Android/
 
           if [ ! -f "LifeRPG_Android/app/build.gradle.kts" ] && \
              [ ! -f "LifeRPG_Android/app/build.gradle" ]; then
-            echo "ERROR: App Gradle file not found."
+            echo "ERROR: app/build.gradle(.kts) not found."
             find LifeRPG_Android -maxdepth 6 -type f | sort
             exit 1
           fi
 
           echo "LifeRPG source extracted successfully."
-          find LifeRPG_Android -maxdepth 3 -type f | sort
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.6.0'
+          cache-provider: basic
 
       - name: Locate Android SDK tools
         shell: bash
@@ -115,11 +115,36 @@ jobs:
       - name: Accept Android SDK licenses
         shell: bash
         run: |
-          set -eu
+          set -uo pipefail
+
+          LOG_FILE="$RUNNER_TEMP/sdk-licenses.log"
+
+          echo "Accepting Android SDK licenses..."
+
+          set +e
 
           yes 2>/dev/null | "$SDKMANAGER" \
             --sdk_root="$ANDROID_HOME" \
-            --licenses >/dev/null
+            --licenses 2>&1 | tee "$LOG_FILE"
+
+          PIPE_STATUS=("${PIPESTATUS[@]}")
+
+          set -e
+
+          YES_STATUS="${PIPE_STATUS[0]:-1}"
+          SDK_STATUS="${PIPE_STATUS[1]:-1}"
+          TEE_STATUS="${PIPE_STATUS[2]:-1}"
+
+          echo "yes exit code: $YES_STATUS"
+          echo "sdkmanager exit code: $SDK_STATUS"
+          echo "tee exit code: $TEE_STATUS"
+
+          if [ "$SDK_STATUS" -ne 0 ]; then
+            echo "ERROR: sdkmanager failed while accepting licenses."
+            echo "Full sdkmanager output:"
+            cat "$LOG_FILE"
+            exit "$SDK_STATUS"
+          fi
 
           echo "Android SDK licenses accepted."
 
@@ -134,6 +159,8 @@ jobs:
             "platforms;android-36" \
             "build-tools;36.0.0"
 
+          echo "Android SDK packages installed."
+
       - name: Show Java version
         run: java -version
 
@@ -147,14 +174,19 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Project settings:"
-          ls -l settings.gradle* 2>/dev/null || true
+          if [ ! -f "settings.gradle.kts" ] && \
+             [ ! -f "settings.gradle" ]; then
+            echo "ERROR: settings.gradle(.kts) is missing."
+            exit 1
+          fi
 
-          echo "Root Gradle file:"
-          ls -l build.gradle* 2>/dev/null || true
+          if [ ! -f "app/build.gradle.kts" ] && \
+             [ ! -f "app/build.gradle" ]; then
+            echo "ERROR: app/build.gradle(.kts) is missing."
+            exit 1
+          fi
 
-          echo "App Gradle file:"
-          ls -l app/build.gradle* 2>/dev/null || true
+          echo "Gradle project files found."
 
       - name: Build LifeRPG APK
         working-directory: LifeRPG_Android
@@ -173,23 +205,32 @@ jobs:
         run: |
           set -euo pipefail
 
-          APK_PATH="LifeRPG_Android/app/build/outputs/apk/debug"
+          APK_DIR="LifeRPG_Android/app/build/outputs/apk/debug"
 
-          if ! find "$APK_PATH" \
-            -type f \
-            -name "*.apk" \
-            -print -quit | grep -q .; then
+          if [ ! -d "$APK_DIR" ]; then
+            echo "ERROR: APK output directory does not exist."
+            exit 1
+          fi
+
+          APK_FILE="$(
+            find "$APK_DIR" \
+              -type f \
+              -name "*.apk" \
+              -print -quit
+          )"
+
+          if [ -z "$APK_FILE" ]; then
             echo "ERROR: APK was not created."
-            find LifeRPG_Android/app/build/outputs \
+            find "LifeRPG_Android/app/build/outputs" \
               -type f 2>/dev/null || true
             exit 1
           fi
 
           echo "APK successfully created:"
-          find "$APK_PATH" -type f -name "*.apk" -print
+          echo "$APK_FILE"
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: LifeRPG-debug-APK
           path: LifeRPG_Android/app/build/outputs/apk/debug/*.apk
