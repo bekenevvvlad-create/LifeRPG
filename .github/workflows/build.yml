@@ -1,3 +1,4 @@
+
 name: Build LifeRPG APK
 
 'on':
@@ -47,9 +48,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          rm -rf extracted
-          rm -rf LifeRPG_Android
-
+          rm -rf extracted LifeRPG_Android
           mkdir -p extracted
 
           unzip -q "LifeRPG-Improved-Source.zip" -d extracted
@@ -62,28 +61,25 @@ jobs:
 
           if [ -z "$SETTINGS_FILE" ]; then
             echo "ERROR: Gradle settings file not found in archive."
-            echo "Archive contents:"
             find extracted -maxdepth 6 -type f | sort
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
 
-          echo "Found project:"
-          echo "$PROJECT_DIR"
+          echo "Found project at: $PROJECT_DIR"
 
           mkdir -p LifeRPG_Android
           cp -a "$PROJECT_DIR"/. LifeRPG_Android/
 
           if [ ! -f "LifeRPG_Android/app/build.gradle.kts" ] && \
              [ ! -f "LifeRPG_Android/app/build.gradle" ]; then
-            echo "ERROR: app Gradle file not found."
+            echo "ERROR: App Gradle file not found."
             find LifeRPG_Android -maxdepth 6 -type f | sort
             exit 1
           fi
 
           echo "LifeRPG source extracted successfully."
-          echo "Project files:"
           find LifeRPG_Android -maxdepth 3 -type f | sort
 
       - name: Set up Gradle
@@ -97,8 +93,7 @@ jobs:
           set -euo pipefail
 
           if [ ! -d "$ANDROID_HOME" ]; then
-            echo "ERROR: Android SDK not found at:"
-            echo "$ANDROID_HOME"
+            echo "ERROR: Android SDK not found at $ANDROID_HOME"
             exit 1
           fi
 
@@ -111,24 +106,22 @@ jobs:
 
           if [ -z "$SDKMANAGER" ]; then
             echo "ERROR: sdkmanager not found."
-            find "$ANDROID_HOME" -maxdepth 5 -type f \
-              \( -name "sdkmanager" -o -name "adb" \) \
-              -print
             exit 1
           fi
 
           echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
-          echo "Found sdkmanager:"
-          echo "$SDKMANAGER"
+          echo "Found sdkmanager: $SDKMANAGER"
 
       - name: Accept Android SDK licenses
         shell: bash
         run: |
-          set -euo pipefail
+          set -eu
 
-          yes | "$SDKMANAGER" \
+          yes 2>/dev/null | "$SDKMANAGER" \
             --sdk_root="$ANDROID_HOME" \
             --licenses >/dev/null
+
+          echo "Android SDK licenses accepted."
 
       - name: Install Android SDK packages
         shell: bash
@@ -154,13 +147,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "settings.gradle:"
+          echo "Project settings:"
           ls -l settings.gradle* 2>/dev/null || true
 
-          echo "Root build.gradle:"
+          echo "Root Gradle file:"
           ls -l build.gradle* 2>/dev/null || true
 
-          echo "App build.gradle:"
+          echo "App Gradle file:"
           ls -l app/build.gradle* 2>/dev/null || true
 
       - name: Build LifeRPG APK
@@ -182,9 +175,13 @@ jobs:
 
           APK_PATH="LifeRPG_Android/app/build/outputs/apk/debug"
 
-          if ! find "$APK_PATH" -type f -name "*.apk" -print -quit | grep -q .; then
+          if ! find "$APK_PATH" \
+            -type f \
+            -name "*.apk" \
+            -print -quit | grep -q .; then
             echo "ERROR: APK was not created."
-            find LifeRPG_Android/app/build/outputs -type f 2>/dev/null || true
+            find LifeRPG_Android/app/build/outputs \
+              -type f 2>/dev/null || true
             exit 1
           fi
 
