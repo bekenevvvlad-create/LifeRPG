@@ -1,5 +1,5 @@
 
-name: Build LifeRPG APK
+name: "Build LifeRPG APK"
 
 'on':
   workflow_dispatch:
@@ -15,6 +15,10 @@ jobs:
     name: Build LifeRPG
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -25,25 +29,65 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Extract LifeRPG source
+        run: |
+          if [ ! -f "LifeRPG-Improved-Source.zip" ]; then
+            echo "ERROR: Source ZIP not found"
+            ls -la
+            exit 1
+          fi
+
+          mkdir -p extracted
+          unzip -q LifeRPG-Improved-Source.zip -d extracted
+
+          PROJECT_DIR=$(find extracted -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -print -quit | xargs -r dirname)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Gradle project not found in ZIP"
+            find extracted -maxdepth 4 -type f
+            exit 1
+          fi
+
+          mkdir -p LifeRPG_Android
+          cp -a "$PROJECT_DIR"/. LifeRPG_Android/
+
+          echo "Project extracted successfully"
+          ls -la LifeRPG_Android
+
+      - name: Locate Android SDK
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
+            -type f -name sdkmanager 2>/dev/null \
+            | sort -V | tail -n 1)
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager not found"
+            ls -R "$ANDROID_HOME" || true
+            exit 1
+          fi
+
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
 
       - name: Accept Android SDK licenses
         run: |
-          set +o pipefail
-          yes | sdkmanager --licenses
+          yes | "$SDKMANAGER" --licenses || true
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager --install \
+          "$SDKMANAGER" --install \
             "platform-tools" \
+            "platforms;android-35" \
             "platforms;android-36" \
+            "build-tools;35.0.0" \
             "build-tools;36.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '9.4.0'
+          gradle-version: '8.11.1'
 
       - name: Build LifeRPG APK
         working-directory: LifeRPG_Android
